@@ -1,0 +1,66 @@
+# FinPay OTel collector (OBSERVABILITY.md).
+#
+# Receives OTLP traces/metrics/logs from every FinPay service, batches them and
+# exports traces to Tempo (the lab trace backend) while keeping a debug exporter
+# for local troubleshooting. SAGA tracing works because each service runs the
+# OTel Java agent with W3C `tracecontext` propagation: traceparent headers are
+# carried over HTTP **and** Kafka (message key/header) so one saga correlates
+# across customer -> transfer -> payment -> ledger.
+#
+# Run with: docker compose up -d otel-collector   (see docker-compose.yml)
+# Local:    otelcontribcol --config otel/otel-collector.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
+    spike_limit_mib: 128
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        action: upsert
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Trace backend (tempo service in docker-compose.yml). Traces are the only
+  # pillar that directly joins spans across the SAGA via traceId/traceparent.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  # Span-and-op metrics derived by the collector, scraped by Prometheus on
+  # :8889 (see prometheus/prometheus.yml job "otel-collector-ops").
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+extensions:
+  health_check: {}
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug, otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug, prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [debug]

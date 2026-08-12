@@ -1,6 +1,6 @@
-# CI skeleton (TASK-001). Kept minimal: prove the repo builds + infra config is
-# valid on every push/PR. Static analysis & dependency scanning arrive with the
-# quality phase (TASK-008).
+# CI. Proves the repo builds and that the observability config (Prometheus
+# rules, Grafana dashboards, OTel collector, compose) is valid on every
+# push/PR. Static analysis & dependency scanning arrive with the quality phase.
 
 name: CI
 
@@ -48,3 +48,33 @@ jobs:
 
       - name: Validate compose file
         run: docker compose config
+
+  observability-lint:
+    name: Lint dashboards, Prometheus rules, OTel YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate dashboards + YAML (render checks)
+        run: |
+          pip install --quiet pyyaml
+          python scripts/lint-observability.py
+
+      - name: Validate Prometheus scrape config
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v2.54.1 \
+            check config /etc/prometheus/prometheus.yml
+
+      - name: Validate Prometheus alerting rules
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v2.54.1 \
+            check rules /etc/prometheus/alert-rules.yml
