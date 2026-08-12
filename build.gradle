@@ -16,4 +16,5 @@ jar {
 dependencies {
     implementation libs.spring.boot.starter.web
     implementation libs.common.web
+    implementation libs.common.observability
 }

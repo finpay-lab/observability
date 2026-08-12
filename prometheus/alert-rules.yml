@@ -1,0 +1,171 @@
+# FinPay alerting rules (OBSERVABILITY.md). One rule per failure scenario the
+# lab must *demonstrate*: service down, SAGA failure/compensation, outbox
+# backlog, Kafka consumer lag, idempotency conflicts, open circuit breakers,
+# pool exhaustion, rate-limit rejections and error-budget burn.
+#
+# Metric names are the contract in docs/OBSERVABILITY.md; they are exported by
+# the business services (micrometer) and by the infrastructure components.
+# Validated in CI with: promtool check rules alert-rules.yml
+
+groups:
+  - name: finpay-availability
+    rules:
+      - alert: FinPayServiceDown
+        expr: up{job!~"prometheus|otel-collector|otel-collector-ops|grafana"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "FinPay {{ $labels.job }} is down"
+          description: "No Prometheus sample for {{ $labels.job }} in the last minute. Check deployment health and liveness probes."
+
+      - alert: FinPayHighErrorRate
+        expr: >
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          / clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "{{ $labels.job }} error rate above 5%"
+          description: "5xx share of requests for {{ $labels.job }} exceeded 5% over the last 5 minutes (now {{ printf \"%.2f\" $value }}%). Correlate with traceId after the burst."
+
+      - alert: FinPaySlowLatency
+        expr: >
+          histogram_quantile(0.95,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le, job))
+          > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "p95 latency over SLO threshold for {{ $labels.job }}"
+          description: "p95 request latency for {{ $labels.job }} exceeds 2s (now {{ $value }}s). Check DB pool, upstream timeouts and circuit breakers."
+
+  - name: finpay-payments
+    rules:
+      - alert: FinPayPaymentFailureRateHigh
+        expr: >
+          sum(rate(payment_failure_total[5m]))
+          / (sum(rate(payment_success_total[5m])) + sum(rate(payment_failure_total[5m])))
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "Payment failure ratio above 5%"
+          description: "Payment failures account for {{ printf \"%.2f\" $value }}%% of payments in the last 5 minutes. Expected for the failure-injection scenarios (docs/reference/§37)."
+
+      - alert: FinPayPaymentVolumeDrop
+        expr: >
+          sum(rate(payment_success_total[5m]))
+          / clamp_min(sum(rate(payment_success_total[1h] offset 5m)) / 12, 1)
+          < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: payments
+        annotations:
+          summary: "Payment success volume dropped >50% vs the last hour"
+          description: "Sustained throughput drop: possible gateway/input failure, not just an isolated incident."
+
+  - name: finpay-saga
+    rules:
+      - alert: FinPaySagaFailureHigh
+        expr: increase(saga_failures_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: transfers
+        annotations:
+          summary: "Multiple SAGA failures in quick succession"
+          description: "{{ $value }} new saga_failures_total increments in the last 5 minutes. Trace back through saga_id -> traceId on the transfer-service."
+
+      - alert: FinPaySagaCompensationsHigh
+        expr: increase(saga_compensations_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: transfers
+        annotations:
+          summary: "SAGA compensations triggered"
+          description: "{{ $value }} compensations in the last 5 minutes. Distinguish expected (simulated downstream failure) from systemic (rule 5: no remote calls inside transactions)."
+
+      - alert: FinPayIdempotencyConflictsHigh
+        expr: rate(idempotency_conflicts_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Repeated idempotency-key conflicts"
+          description: "More than 1 idempotency conflict/sec sustained. Clients may be retrying without an idempotency key, or an out-of-order/duplicate Kafka delivery is hitting consumers (rule 6/7)."
+
+      - alert: FinPayOutboxBacklogHigh
+        expr: max by (job) (outbox_pending_events) > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Outbox backlog growing for {{ $labels.job }}"
+          description: "{{ $value }} events pending publication for {{ $labels.job }}. Kafka down or outbox publisher unhealthy; trace by eventId on the dead-letter path."
+
+      - alert: FinPayCircuitBreakerOpen
+        # Exported as the number of currently-open breakers (a gauge) despite
+        # the _total suffix; service keeps the counter of opens separately.
+        expr: max by (job) (circuit_breaker_open_total) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Circuit breaker open on {{ $labels.job }}"
+          description: "A resilience circuit breaker for {{ $labels.job }} is open — downstream dependency is not being called; upgrade-level alarms expected (rule 8)."
+
+  - name: finpay-infra
+    rules:
+      - alert: FinPayKafkaConsumerLagHigh
+        expr: max by (group, topic) (kafka_consumer_lag) > 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Kafka consumer lag > 1000 for {{ $labels.group }} / {{ $labels.topic }}"
+          description: "Consumer group {{ $labels.group }} is {{ $value }} messages behind on topic {{ $labels.topic }}. Consumer crash or poison-message handling in retry/DLQ."
+
+      - alert: FinPayConsumerLagAbsent
+        expr: absent(kafka_consumer_lag)
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "No kafka_consumer_lag samples"
+          description: "Consumer-lag instrumentation disappeared. Either no consumers are connected or metrics were renamed; do not ignore during chaos runs."
+
+      - alert: FinPayDbPoolExhausted
+        expr: max by (job) (database_connection_pool_usage) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Connection pool at {{ $value }}% for {{ $labels.job }}"
+          description: "database_connection_pool_usage (0..1) exceeded 0.9 for {{ $labels.job }}. Slow queries, leaked connections or burst; check HikariCP metrics alongside."
+
+      - alert: FinPayRedisRateLimitRejectedHigh
+        expr: rate(redis_rate_limit_rejected_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Sustained rate-limit rejections"
+          description: "Gateways are rejecting >100 requests/sec against Redis limit counters ({{ $value }}). Verify it is the intended gateway per-route limit, not a tight-limit regression."

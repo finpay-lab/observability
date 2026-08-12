@@ -1,0 +1,15 @@
+# FinPay business-service scrape targets (OBSERVABILITY.md).
+#
+# Prometheus picks up any *.yml in this directory via file_sd; add a live
+# service here (no Prometheus restart needed). Local dev services run on the
+# host, so reach them through host.docker.internal (Docker Desktop / docker
+# hosts where that alias is defined). Ports follow LOCAL_DEVELOPMENT.md.
+#
+# Example entry:
+#   - labels:
+#       service: identity-service
+#     targets: ["host.docker.internal:8082"]
+- labels:
+    service: observability
+  targets:
+    - host.docker.internal:8080
