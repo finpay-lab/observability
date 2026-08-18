@@ -1,5 +1,29 @@
 server:
-  port: 8080
+  port: 8090
 spring:
   application:
     name: observability
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
+    metrics:
+      endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
