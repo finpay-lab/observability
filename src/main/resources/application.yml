@@ -27,3 +27,25 @@ management:
       endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
     metrics:
       endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
+
+# AI Ops incident triage (FP-61). Pure observability sidecar: on an alert
+# webhook it pulls the alert's PromQL spec + OTel trace and asks an LLM for a
+# root-cause hypothesis. BYOK: the API key must be provided from the secret
+# store via AI_LLM_API_KEY; a blank key disables the LLM step (fallback to a
+# context-only summary).
+finpay:
+  aiops:
+    llm:
+      base-url: ${AI_LLM_BASE_URL:https://api.openai.com/v1}
+      api-key: ${AI_LLM_API_KEY:}
+      model: ${AI_LLM_MODEL:gpt-4o-mini}
+      timeout: 30s
+      max-retries: 2
+    trace-store:
+      base-url: ${TRACE_STORE_URL:http://otel-collector:16686}
+      timeout: 10s
+    # Known alert rules (PromQL query + runbook). One entry per alert name.
+    # alert-specs:
+    #   - alert-name: high-error-rate
+    #     promql: "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count[5m])) > 0.05"
+    #     runbook-url: "https://runbooks.finpay.dev/high-error-rate.md"
