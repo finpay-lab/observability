@@ -27,3 +27,20 @@ management:
       endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
     metrics:
       endpoint: ${OTLP_ENDPOINT:http://otel-collector.finpay-infra.svc.cluster.local:4317}
+
+# Trace summarization (FP-62). Pure observability read path: GET
+# /trace/{traceId}/summary pulls the OTel trace from the trace store and asks
+# an LLM (BYOK) for a concise narrative. A blank AI_LLM_API_KEY disables the
+# LLM step and the endpoint falls back to a deterministic facts-only summary.
+# Span data is sent to the LLM provider but is never logged.
+finpay:
+  tracesummary:
+    llm:
+      base-url: ${AI_LLM_BASE_URL:https://api.openai.com/v1}
+      api-key: ${AI_LLM_API_KEY:}
+      model: ${AI_LLM_MODEL:gpt-4o-mini}
+      timeout: 30s
+      max-retries: 2
+    trace-store:
+      base-url: ${TRACE_STORE_URL:http://otel-collector:16686}
+      timeout: 10s

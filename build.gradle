@@ -1,6 +1,11 @@
 plugins {
     id 'com.finpay.spring-conventions'
     id 'com.finpay.testing-conventions'
+    // The org.springframework.boot plugin is applied inline (not from the
+    // precompiled convention plugin): applying it unversioned from the
+    // precompiled plugin breaks autoconfig wiring in the composite build
+    // (see finpay-platform build-logic spring-conventions note).
+    alias(libs.plugins.spring.boot)
 }
 
 description = 'FinPay observability.'
@@ -18,4 +23,5 @@ dependencies {
     implementation libs.spring.boot.starter.actuator
     implementation libs.micrometer.registry.prometheus
     implementation libs.common.web
+    testImplementation libs.spring.boot.starter.test
 }
