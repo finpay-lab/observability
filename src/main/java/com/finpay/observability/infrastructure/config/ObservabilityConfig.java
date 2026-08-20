@@ -8,6 +8,10 @@ import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 public class ObservabilityConfig {
@@ -22,5 +26,22 @@ public class ObservabilityConfig {
     @Bean
     public OpenTelemetry openTelemetry() {
         return OpenTelemetrySdk.builder().build();
+    }
+
+    /**
+     * CORS source required by Spring Boot 4.1 management security
+     * auto-configuration (ManagementWebSecurityAutoConfiguration expects a
+     * CorsConfigurationSource bean).
+     */
+    @Bean
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOriginPatterns(List.of("*"));
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cfg);
+        return source;
     }
 }

@@ -22,3 +22,7 @@ dependencies {
 afterEvaluate {
     sourceSets.test.java.exclude '**/ObservabilityApplicationTest.java'
 }
+
+bootJar {
+    enabled = true
+}

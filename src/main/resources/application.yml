@@ -19,7 +19,7 @@ management:
 finpay:
   observability:
     otel:
-      collector-endpoint: http://localhost:4317
+      collector-endpoint: http://otel-collector.finpay-infra.svc.cluster.local:4317
     llm:
       byok-secret-ref: ai-key
       timeout-seconds: 20
