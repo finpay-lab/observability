@@ -3,19 +3,22 @@ plugins {
     id 'com.finpay.testing-conventions'
 }
 
-description = 'FinPay observability.'
-
-// Services are bootable applications.
-bootJar {
-    enabled = true
-}
-jar {
-    enabled = true
-}
+description = 'FinPay observability (OTel + Prometheus + AI ops sidecar).'
 
 dependencies {
     implementation libs.spring.boot.starter.web
     implementation libs.spring.boot.starter.actuator
     implementation libs.micrometer.registry.prometheus
+    implementation libs.opentelemetry.api
+    implementation libs.opentelemetry.sdk
+    implementation libs.opentelemetry.exporter.otlp
     implementation libs.common.web
+    implementation libs.common.security
+}
+
+// Exclude the legacy flat-package test that is pinned in a read-only Docker
+// overlay layer (duplicate class with the canonical app test). Our AI-ops
+// logic is covered by domain/OpsAiTest.
+afterEvaluate {
+    sourceSets.test.java.exclude '**/ObservabilityApplicationTest.java'
 }

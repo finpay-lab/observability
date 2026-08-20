@@ -1,0 +1,28 @@
+{
+  "dashboard": {
+    "title": "FinPay SAGA Observability",
+    "tags": ["finpay", "saga"],
+    "panels": [
+      {
+        "title": "Transfer SAGA step distribution",
+        "type": "timeseries",
+        "targets": [{ "expr": "sum by (step) (finpay_transfer_saga_step_total)" }]
+      },
+      {
+        "title": "Transfer failure rate",
+        "type": "timeseries",
+        "targets": [{ "expr": "sum(rate(finpay_transfer_saga_failed_total[5m])) / sum(rate(finpay_transfer_saga_total[5m]))" }]
+      },
+      {
+        "title": "Ledger anomaly score",
+        "type": "timeseries",
+        "targets": [{ "expr": "finpay_anomaly_score" }]
+      },
+      {
+        "title": "Gateway rate-limit rejections",
+        "type": "timeseries",
+        "targets": [{ "expr": "sum(rate(finpay_gateway_ratelimited_total[5m]))" }]
+      }
+    ]
+  }
+}
